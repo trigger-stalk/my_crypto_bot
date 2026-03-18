@@ -19,19 +19,27 @@ HEADERS = {
 }
 
 def get_bybit_tickers():
-    # Используем зеркало bytick.com, оно лучше работает в GitHub Actions
-    url = "https://api.bytick.com/v5/market/tickers?category=linear"
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=20)
-        if response.status_code != 200:
-            print(f"Ошибка API: Статус {response.status_code}")
-            return {}
-        
-        res = response.json()
-        if res.get('retCode') == 0:
-            return {item['symbol']: item for item in res['result']['list'] if 'USDT' in item['symbol']}
-    except Exception as e:
-        print(f"Критическая ошибка Bybit API: {e}")
+    # Пробуем еще одно официальное зеркало (часто помогает при 403)
+    urls = [
+        "https://api.bybit.com/v5/market/tickers?category=linear",
+        "https://api.bytick.com/v5/market/tickers?category=linear",
+        "https://api-testnet.bybit.com/v5/market/tickers?category=linear" # Резерв
+    ]
+    
+    for url in urls:
+        try:
+            print(f"Пробую подключиться к {url}...")
+            response = requests.get(url, headers=HEADERS, timeout=20)
+            if response.status_code == 200:
+                res = response.json()
+                if res.get('retCode') == 0:
+                    print("Успешное подключение!")
+                    return {item['symbol']: item for item in res['result']['list'] if 'USDT' in item['symbol']}
+            else:
+                print(f"Домен {url} вернул статус {response.status_code}")
+        except Exception as e:
+            print(f"Ошибка на домене {url}: {e}")
+            continue
     return {}
 
 def get_oi_for_symbol(symbol):
