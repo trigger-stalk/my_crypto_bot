@@ -3,8 +3,9 @@ import time
 import telebot
 
 # --- НАСТРОЙКИ ---
-TG_TOKEN = "ТВОЙ_ТОКЕН_ОТ_BOTFATHER"
-CHAT_ID = "ТВОЙ_CHAT_ID"
+import os
+TG_TOKEN = os.getenv("TG_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 OI_THRESHOLD = 5.0      # Сигнал, если OI вырос на 5% за 5 минут
 CHECK_INTERVAL = 300    # Проверка каждые 5 минут (300 сек)
 
