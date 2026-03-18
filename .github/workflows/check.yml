@@ -2,8 +2,8 @@ name: Bybit Monitor Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Запуск каждые 5 минут
-  workflow_dispatch:      # Кнопка ручного запуска
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Важно для корректного pull/rebase
+          fetch-depth: 0 # Загружаем всю историю для корректного слияния
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,7 +31,6 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: python main.py
 
       - name: Commit and Push Market State
@@ -39,15 +38,19 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Синхронизируемся с облаком, если ты что-то правил в браузере
-          git pull origin main --rebase
-          
+          # Сначала фиксируем изменения файла данных
           git add market_state.json
           
-          # Проверка: есть ли изменения в файле данных
+          # Если изменений нет, просто выходим
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
-          else
-            git commit -m "Update market state [skip ci]"
-            git push origin main
+            exit 0
           fi
+          
+          git commit -m "Update market state [skip ci]"
+          
+          # Самый важный момент: стягиваем твои правки из браузера и ставим их ПЕРЕД правками бота
+          git pull --rebase origin main
+          
+          # Отправляем финальный результат
+          git push origin main
