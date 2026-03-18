@@ -1,22 +1,42 @@
-name: Bybit Scan
+name: Bybit Monitor Bot
+
 on:
   schedule:
     - cron: '*/5 * * * *'  # Запуск каждые 5 минут
-  workflow_dispatch:        # Кнопка для ручного запуска
+  workflow_dispatch:      # Кнопка для ручного запуска в разделе Actions
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Даем права на запись в репозиторий для сохранения market_state.json
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install dependencies
-        run: pip install requests pyTelegramBotAPI
-      - name: Run Monitor
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyTelegramBotAPI
+
+      - name: Run Monitor Script
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python main.py
+
+      - name: Commit and Push Market State
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Добавляем файл с данными в индекс
+          git add market_state.json
+          # Проверяем, есть ли изменения, чтобы не плодить пустые коммиты
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update market state [skip ci]" && git push)
