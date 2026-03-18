@@ -1,75 +1,91 @@
+import os
 import requests
-import time
+import json
 import telebot
 
-# --- НАСТРОЙКИ ---
-import os
+# --- НАСТРОЙКИ (Берем из секретов GitHub) ---
 TG_TOKEN = os.getenv("TG_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-OI_THRESHOLD = 5.0      # Сигнал, если OI вырос на 5% за 5 минут
-CHECK_INTERVAL = 300    # Проверка каждые 5 минут (300 сек)
+OI_THRESHOLD = 5.0  # Порог в 5%
+DATA_FILE = "market_state.json"
 
 bot = telebot.TeleBot(TG_TOKEN)
 
-def get_bybit_market_data():
-    """Получает цены и список всех монет на фьючерсах Bybit"""
+def get_bybit_data():
+    """Получает данные по топ-100 монетам (OI и Цена) за один запрос"""
+    # Используем эндпоинт тикеров, где для некоторых категорий есть данные OI
     url = "https://api.bybit.com/v5/market/tickers?category=linear"
     try:
         response = requests.get(url).json()
         if response['retCode'] == 0:
-            # Создаем словарь {Символ: Цена}
-            return {item['symbol']: float(item['lastPrice']) for item in response['result']['list'] if 'USDT' in item['symbol']}
-    except Exception as e:
-        print(f"Ошибка получения цен: {e}")
-    return {}
+            # Берем первые 100 монет по объему (или просто список)
+            data = {}
+            for item in response['result']['list']:
+                if 'USDT' in item['symbol']:
+                    symbol = item['symbol']
+                    # В тикерах не всегда есть точный OI, берем его через доп. поле или отдельный запрос
+                    # Для надежности в Actions лучше делать точечно для ТОП-50
+                    data[symbol] = {
+                        "price": float(item['lastPrice']),
+                        "volume": float(item['volume24h'])
+                    }
+            return data
+    except:
+        return {}
 
-def get_symbol_oi(symbol):
-    """Получает текущий открытый интерес для конкретной монеты"""
+def get_oi_for_symbol(symbol):
+    """Получаем свежий OI для конкретного символа"""
     url = f"https://api.bybit.com/v5/market/open-interest?category=linear&symbol={symbol}&intervalTime=5min"
     try:
-        response = requests.get(url).json()
-        if response['retCode'] == 0 and len(response['result']['list']) > 0:
-            return float(response['result']['list'][0]['openInterest'])
-    except Exception as e:
-        pass
-    return 0
+        res = requests.get(url).json()
+        if res['retCode'] == 0 and len(res['result']['list']) > 0:
+            return float(res['result']['list'][0]['openInterest'])
+    except:
+        return 0
 
-def monitor():
-    last_oi_data = {} # Хранилище для сравнения
-    print("Бот Bybit запущен. Сканирую рынок...")
-    
-    while True:
-        current_prices = get_bybit_market_data()
-        symbols = list(current_prices.keys())
-        
-        # Сканируем топ-100 самых активных монет для экономии лимитов API
-        for symbol in symbols[:100]:
-            current_oi = get_symbol_oi(symbol)
+def load_old_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_current_data(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f)
+
+def main():
+    print("Запуск сканирования Bybit...")
+    current_market = get_bybit_data()
+    old_data = load_old_data()
+    new_state = {}
+
+    # Сканируем топ-30 самых волатильных монет (чтобы вписаться в лимиты GitHub)
+    top_symbols = sorted(current_market.keys(), key=lambda x: current_market[x]['volume'], reverse=True)[:30]
+
+    for symbol in top_symbols:
+        current_oi = get_oi_for_symbol(symbol)
+        current_price = current_market[symbol]['price']
+        new_state[symbol] = {"oi": current_oi, "price": current_price}
+
+        if symbol in old_data:
+            old_oi = old_data[symbol]['oi']
+            old_price = old_data[symbol]['price']
             
-            if symbol in last_oi_data:
-                old_oi = last_oi_data[symbol]
-                oi_change = ((current_oi - old_oi) / old_oi) * 100 if old_oi > 0 else 0
+            if old_oi > 0:
+                oi_change = ((current_oi - old_oi) / old_oi) * 100
                 
-                # Если OI вырос выше порога
                 if oi_change >= OI_THRESHOLD:
-                    price = current_prices[symbol]
-                    msg = (f"🔥 **BYBIT WHALE ALERT: {symbol}**\n\n"
-                           f"📊 Рост OI: `+{oi_change:.2f}%` за 5 мин\n"
-                           f"💰 Цена: `{price}`\n"
-                           f"🔗 [Открыть на Bybit](https://www.bybit.com/trade/usdt/{symbol})")
-                    
-                    bot.send_message(CHAT_ID, msg, parse_mode="Markdown", disable_web_page_preview=True)
-                    print(f"Сигнал по {symbol}: +{oi_change:.2f}% OI")
-            
-            last_oi_data[symbol] = current_oi
-            time.sleep(0.2) # Небольшая пауза, чтобы Bybit не забанил за частые запросы
-            
-        print(f"Цикл проверки завершен. Спим {CHECK_INTERVAL} сек...")
-        time.sleep(CHECK_INTERVAL)
+                    direction = "📈 LONG-Bias" if current_price > old_price else "📉 SHORT-Bias"
+                    msg = (f"🔔 **BYBIT ANOMALY**\n\n"
+                           f"🪙 Монета: #{symbol}\n"
+                           f"📊 Рост OI: `+{oi_change:.2f}%`\n"
+                           f"⚡️ Направление: {direction}\n"
+                           f"💰 Цена: `{current_price}`\n"
+                           f"🔗 [Торговать](https://www.bybit.com/trade/usdt/{symbol})")
+                    bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+
+    save_current_data(new_state)
+    print("Проверка завершена, данные сохранены.")
 
 if __name__ == "__main__":
-    try:
-        monitor()
-    except Exception as e:
-        print(f"Критическая ошибка: {e}")
-        time.sleep(60)
+    main()
