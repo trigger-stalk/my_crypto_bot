@@ -13,12 +13,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # Обновлено с v3
+        uses: actions/checkout@v4.1.0  # Обновлено до версии с поддержкой Node 20/24
 
       - name: Set up Python
-        uses: actions/setup-python@v5  # Обновлено с v4
+        uses: actions/setup-python@v5.0.0  # Обновлено до v5 (поддерживает Node 24)
         with:
-          python-version: '3.11'   # Рекомендую 3.11 для стабильности в 2026
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -29,7 +29,7 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          # Добавляем переменную, чтобы GitHub не ругался на старые экшены, если они затесались
+          # Явно разрешаем использование Node 24 для всех экшенов в этом шаге
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
         run: python main.py
 
