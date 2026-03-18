@@ -2,8 +2,8 @@ name: Bybit Monitor Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
+    - cron: '*/5 * * * *'  # Запуск каждые 5 минут
+  workflow_dispatch:      # Кнопка ручного запуска
 
 jobs:
   build:
@@ -13,10 +13,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.0  # Обновлено до версии с поддержкой Node 20/24
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Важно для корректного pull/rebase
 
       - name: Set up Python
-        uses: actions/setup-python@v5.0.0  # Обновлено до v5 (поддерживает Node 24)
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -29,26 +31,23 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          # Явно разрешаем использование Node 24 для всех экшенов в этом шаге
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: python main.py
 
-     - name: Commit and Push Market State
+      - name: Commit and Push Market State
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 1. Забираем последние изменения из репозитория (твои правки кода)
+          # Синхронизируемся с облаком, если ты что-то правил в браузере
           git pull origin main --rebase
           
-          # 2. Добавляем файл с данными
           git add market_state.json
           
-          # 3. Проверяем, есть ли что фиксировать
+          # Проверка: есть ли изменения в файле данных
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Update market state [skip ci]"
-            # 4. Отправляем в основную ветку
             git push origin main
           fi
