@@ -33,17 +33,22 @@ jobs:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
         run: python main.py
 
-      - name: Commit and Push Market State
+     - name: Commit and Push Market State
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 1. Забираем последние изменения из репозитория (твои правки кода)
+          git pull origin main --rebase
+          
+          # 2. Добавляем файл с данными
           git add market_state.json
-          # Проверяем наличие изменений
+          
+          # 3. Проверяем, есть ли что фиксировать
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            # Сначала забираем изменения из репозитория, чтобы не было конфликта
-            git pull --rebase origin main
             git commit -m "Update market state [skip ci]"
+            # 4. Отправляем в основную ветку
             git push origin main
           fi
