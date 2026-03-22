@@ -1,51 +1,36 @@
-name: Bybit Monitor Bot
+name: Bybit OI Monitor
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Каждые 5 минут
-  workflow_dispatch:      # Кнопка ручного запуска
+    - cron: '*/10 * * * *' # Запуск каждые 10 минут
+  workflow_dispatch: # Возможность запустить вручную кнопкой
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests pyTelegramBotAPI
+          pip install pybit requests
 
-      - name: Run Monitor Script
+      - name: Run script
         env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python main.py
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py
 
-      - name: Commit and Push Market State
+      - name: Save state
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Забираем возможные изменения из репозитория
-          git pull origin main --rebase
-          
-          git add market_state.json
-          
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "Изменений нет."
-          else
-            git commit -m "Update market state [skip ci]"
-            git push origin main
-          fi
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add last_oi.json
+          git commit -m "Update OI state" || exit 0
+          git push
